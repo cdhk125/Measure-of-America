@@ -8,8 +8,8 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, cache.lazy = FALSE)
 
-library("tidycensus")
 library("tidyverse")
+library("tidycensus")
 library('here')
 library('janitor')
 
@@ -39,8 +39,8 @@ Import the data set but skip the first row of code values.
 data_skip1 <- read_csv(here("data/census-demographics", "ACSDP1Y2019.DP05_data_with_overlays_2020-09-26T140825.csv"), skip = 1) %>% 
   clean_names()
 
-data_skip1 %>% 
-  colnames()
+data_skip1 %>% ncol()
+data_skip1 %>% colnames()
 ```
 
 Clean up the data to rename columns and select only potentially useful columns.
@@ -142,7 +142,7 @@ Data Table:	Default
 data_cdc <- read_tsv(here("data/cdc-demographics", "Bridged-Race Population Estimates 2019.txt")) %>% 
   clean_names()
 
-data_cdc %>% View()
+head(data_cdc)
 ```
 
 ```{r}
@@ -229,7 +229,7 @@ data_cdc_ethnicity <- data_cdc_trimmed %>%
 data_cdc_ethnicity %>% 
   count(dominant_ethnicity)
 
-data_cdc_ethnicity
+head(data_cdc_ethnicity)
 ```
 
 Using the Census race variable (i.e., not taking ethnicity into account), every county in California is dominantly white.
@@ -284,7 +284,7 @@ Exploration only - decided not to use the package due to lack of 2019 data and n
 ```{r}
 census_vars <- load_variables(2010, "sf1", cache = TRUE)
 
-View(census_vars)
+head(census_vars)
 ```
 
 The API call for the ACS data returns an error for year 2019.
@@ -295,7 +295,7 @@ ca <- get_acs(geography = "county",
               state = "CA",
               year = 2018)
 
-ca
+head(ca)
 ```
 
 How does the example in the package readme categorize race and ethnicity?

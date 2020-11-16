@@ -1,0 +1,262 @@
+---
+title: "Statistical Modeling Practice"
+author: "Christina Kim"
+date: "11/14/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, cache.lazy = FALSE)
+
+library(stringr)
+library(dplyr)
+library(magrittr)
+library(data.table)
+```
+
+## Exploratory Data Analysis
+
+```{r}
+data_raw <- read.csv(file = "../data/summary_data_race_categorized.csv")
+head(data_raw)
+#str(data_raw)
+```
+
+### Data quality: Missing values?
+
+```{r}
+summary(data_raw$median_household_income_in_dollar)
+
+data <- data_raw %>% 
+  select(county = countyname, 
+         med_income = median_household_income_in_dollar,
+         pp_household = persons_per_household,
+         death_rate
+         )
+
+summary(data)
+data$county[is.na(data$med_income)]
+data$county[is.na(data$pp_household)]
+
+# Option 1: Omit NAs
+data_na_removed <- data %>% na.omit()
+
+# Option 2: Mutate to a better value
+# mutate(med_income = coalesce(med_income, 0), pp_household = coalesce(pp_household, 0))
+```
+
+```{r practice_coalesce}
+x <- c("hi", "bye", NA)
+y <- c(1, 2, NA, NA, 7)
+z <- c(NA, NA, 3, 4, 6)
+
+# Combine vectors to complete (data type needs to match)
+coalesce(y, z)
+
+# Replace NAs with a single value
+coalesce(y, 0)
+coalesce(x, "rude")
+```
+
+
+### Univariate analysis
+
+* Histogram of a variable
+* Time series
+
+```{r}
+summary(data_na_removed$med_income)
+
+data_na_removed %>% 
+  mutate(quartile = ntile(death_rate, 4),
+         rank = row_number(-death_rate)) %>% 
+  select(rank, everything()) %>% 
+  arrange(rank)
+```
+
+### Bivariate analysis: Correlation
+
+* Scatter matrix
+* Catch features that should be engineered together
+* Multicollinearity - remove features
+
+```{r}
+data_na_removed %>% 
+  select_if(is.numeric) %>% 
+  cor(method = c("pearson"))
+
+cor.test(data_na_removed$med_income, data_na_removed$death_rate, method = "pearson")
+cor.test(data_na_removed$pp_household, data_na_removed$death_rate, method = "pearson")
+cor.test(data_na_removed$med_income, data_na_removed$pp_household, method = "pearson")
+```
+
+## Linear Regression Model
+
+https://feliperego.github.io/blog/2015/10/23/Interpreting-Model-Output-In-R
+
+* Call: We fit a linear regression model using the death_rate as a response variable and median income and persons per household as predictors, using the data_na_removed data.
+
+* Residuals: The residuals are NOT distributed symmetrically around 0, which indicates the difference between observed values and predicted values were larger for certain values than the others. We should consider plotting the residuals to see if they are normally distributed and make sure linear regression is appropriate for this case.
+
+* Coefficients: These values tell me the intercept and slope of the linear model. E+01 means moving the decimal point one digit to the right and E–01 means moving the decimal point one digit to the left.
+* Coefficient estimates: For an average county in this data, the expected death rate is -94.75. For an increase of 1 person per household, the expected death rate increases by 50.29. 
+* Coefficient standard error: We want this number to be smaller relative to the coefficient estimate, meaning the expected differences from running this model over and over with the same X values will be small. We expect the death rate to vary by 12.55 for the pp_household coefficient estimate of 50.29.
+* Coefficient t value: The coefficient estimate for pp_household is 4 standard deviations away from 0. We want this value to be far from 0 to say a relationship exists (reject the null hypothesis).
+* Coefficient p-value: The probability of observing the t value or anything larger is very small here, so it's unlikely we observe the relationship between pp_household and death rate by chance. "***" also indicates a highly significant p-value.
+
+* Residual standard error: On average, the actual death rate can deviate from the true regression line by 22.99 due to the error term. TODO: Read more on this, https://stats.stackexchange.com/questions/57746/what-is-residual-standard-error and the book
+* Degree of freedom: 38 data points went into the estimation of the 3 parameters, from the total 41 data points after taking these parameters into account.
+
+* Adjusted R-squared: The R-squared statistic tells us 32.13% of the variance in the death rate can be explained by the med_income and pp_household variables. Because it will always go up with more variables included, the adjust R-squared value of 0.3213 is better to use.
+
+* F-statistic: It's an indicator of whether there is a relationship between the predictors and the response variable. The farther it is from 1, the better it is but how much farther varies by the amount of data and the number of variables. Our F-statistic is 10.47 and pretty far from 1 - it also has a lower p-value, indicating the relationship is unlikely due to chance.
+
+One way we could start to improve is by transforming our response variable (try running a new model with the response variable log-transformed or a quadratic term and observe the differences encountered). We could also consider bringing in new variables, new transformation of variables and then subsequent variable selection, and comparing between different models.
+
+```{r}
+lm_fit <- lm(death_rate ~ .-county, data = data_na_removed)
+summary(lm_fit)
+
+# Show reduction in RSS as each term is added + F score
+anova(lm_fit)
+```
+
+```{r}
+lm_fit2 <- lm(death_rate ~ pp_household, data = data_na_removed)
+summary(lm_fit2)
+
+# Show RSS for each model and change in DF and sum of squares + F statistic (valid only if fitted to the same dataset)
+anova(lm_fit2, lm_fit, test = "F")
+```
+
+There are outliers in the data.
+
+```{r plot_residual}
+# Option 1
+library(ggplot2)
+data_na_removed %>% 
+  ggplot(aes(x = county, y = death_rate)) +
+  geom_point() +
+  coord_flip()
+data_na_removed %>% 
+  ggplot(aes(x = pp_household, y = death_rate)) +
+  geom_point() +
+  geom_text(mapping = aes(label = county))
+
+# Option 2
+lm_fit_res = resid(lm_fit)
+which.max(lm_fit_res)
+data_na_removed[13, "county"] # Marin
+data_na_removed[7, "county"] # Imperial
+
+# Option 3
+# Residual analysis https://rpubs.com/iabrady/residual-analysis
+plot(lm_fit)
+data_na_removed[20, "county"] # Placer
+data_na_removed[21, "county"] # Riverside
+```
+
+
+## Logistic Regression Model
+
+Is there an associate between median income and persons per household and whether a county is dominantly White?
+
+### Frequency Table
+
+```{r review_dummy_variables}
+data_raw %>% count(dominant_race_x)
+
+data_raw %>% 
+  mutate(dominant_race_x = factor(dominant_race_x)) %>%
+  pull(dominant_race_x) %>% 
+  contrasts()
+
+race_table <- table(data_raw$dominant_race_x, data_raw$dominant_race_white) # 1st = row, 2nd = column
+race_table[1, 2] <- 2
+race_table
+margin.table(race_table, 1) # Rows become columns with row totals
+margin.table(race_table, 2) # Columns remain columns but with column totlas
+prop.table(race_table) # Percentages of all cells
+chisq.test(race_table)
+
+# Multiple variables, stratified for more than 2x2
+race_table_2 <- table(data_raw$dominant_race_x, data_raw$dominant_race_y, data_raw$dominant_race_white)
+ftable(race_table_2)
+```
+
+### Fit the model
+
+https://www.theanalysisfactor.com/r-glm-model-fit/
+
+* The Residual Deviance has reduced by 31.4 with a loss of two degrees of freedom compared to the model with only the intercept (grand mean).
+
+NOTE: AIC (information criteria) is mostly useful for comparing similar models, the smaller the better. Quality of the model but penalizes you for having a too complicated model.
+
+
+```{r}
+data_race <- data_raw %>% 
+  select(id = countyid,
+         county = countyname,
+         median_income = median_household_income_in_dollar,
+         pp_household = persons_per_household,
+         dominant_race_white) %>% 
+  na.omit()
+
+glm.fit <- glm(dominant_race_white ~ median_income + pp_household, 
+               data = data_race,
+               family = "binomial")
+summary(glm.fit)
+
+# Exponents of coefficients (odds from logit)
+exp(coef(glm.fit))
+# profile-likelihood approach
+exp(confint(glm.fit))
+# Wald test
+exp(confint.default(glm.fit))
+```
+
+### Make predictions
+
+```{r}
+# Probabilities of a county with dominant White population
+glm.props <- predict(glm.fit, type = "response")
+# Make predictions with threshold .5
+glm.pred <- ifelse(glm.props > 0.5, 1, 0)
+# Confusion matrix
+table(glm.pred, data_race$dominant_race_white)
+mean(glm.pred == data_race$dominant_race_white)
+```
+
+### Train / Test
+
+It looks like I was overfitting the data with the first model.
+
+```{r}
+attach(data_race)
+train = id < 6070
+glm.fit2 <- glm(dominant_race_white ~ median_income + pp_household,
+                data = data_race,
+                family = "binomial",
+                subset = train)
+summary(glm.fit2)
+
+# Calculate probabilities using test data
+glm.props2 <- predict(glm.fit2, 
+                      newdata = data_race[!train, ],
+                      type = "response")
+
+# Compute predictions, 1 or 0, based on the probabilities
+glm.pred2 <- ifelse(glm.props2 > 0.5, 1, 0)
+
+table(glm.pred2, data_race[!train, "dominant_race_white"])
+mean(glm.pred2 == data_race[!train, "dominant_race_white"])
+```
+
+
+### Class imbalance
+
+```{r}
+data_race %>% 
+  count(dominant_race_white) %>% 
+  mutate(percent_counties = n / sum(n))
+```

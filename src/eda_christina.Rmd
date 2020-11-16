@@ -24,13 +24,15 @@ library("ggcorrplot")
 data <- read.csv(here("data", "summary_data.csv"))
 head(data, 10)
 ```
-
+ 
 ```{r}
 data_race_categorized <- read.csv(here("data/cdc-demographics", "cdc_race_gender_population_data_categorized.csv"))
 
 df <- data %>% 
   left_join(data_race_categorized %>% select(-county, -id), by = c("countyid" = "county_code"), keep = FALSE) %>% 
   clean_names()
+
+df %>% write_csv(here("data", "summary_data_race_categorized.csv"))
 
 colnames(df)
 ```
